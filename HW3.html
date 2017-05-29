@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- HW3 Assignment - September, 2016 - Louis Vu -->
+<head>
+    <meta name="description" content="[add your bin description]">
+    <meta charset="utf-8">
+    <title>HW3 - Walking Mechanics</title>
+    <!-- you need to load TWGL from somewhere -
+      -- this grabs it from the CS server, which
+      -- might take a while
+      -->
+    <canvas id="myCanvas"
+            width="900" height="550"
+            style="border:1px solid #000;">
+    </canvas><br/>
+    Robot Pace:    <input id="slider4" type="range" min="0" max="4" step = "1"/>
+    Rotate Cam: <input id="slider1" type="range" min="-50" max="100" />
+    Tilt Cam: <input id="slider2" type="range" min="0" max="600" step="10"/>
+    <script src="http://graphics.cs.wisc.edu/JS/twgl-full.min.js"></script>
+</head>
+<body>
+<script>
+    var canvas = document.getElementById('myCanvas');
+    var context = canvas.getContext('2d');
+    var m4 = twgl.m4;
+
+    var slider1 = document.getElementById('slider1');
+    slider1.value = 25;
+    var slider2 = document.getElementById('slider2');
+    slider2.value = 300;
+    var slider4 = document.getElementById('slider4');
+    slider4.value = 0;
+    var shiftX = 0;//200;
+    var shiftY = 0;
+    var shiftZ = 0;
+    var shiftRLeg = 0;
+    var shiftLLeg = 0;
+    var stack = [];
+
+    var raVal = 5.8;
+    var raInc = .05;
+    var laVal = 7.5;
+    var laInc = -.05;
+
+    var R_ForePos = -7.5;
+    var L_ForePos = -7.5;
+    var RF_Inc = -.08;
+    var LF_Inc = .08;
+
+    var RA_Movback = 0;
+    var LA_Movback = 0;
+
+    var LFoot_Tilt = 0;
+    var RFoot_Tilt = 0;
+    var LFoot_Inc = .06;
+    var RFoot_Inc = -.06;
+    var feetSmooth = .13;
+
+    var walkAround = 0;
+    var walkInc = 0;
+
+    var revolveBody = 6.65;
+    var revolveBody_Inc = -.02;
+
+    var rightLegPos = -7.5;
+    var leftLegPos = -7.5;
+    var leftLegSmooth = .08;
+    var rightLegSmooth = -.08;
+
+    var pace = 0;
+
+    function moveToTx(x,y,z,Tx) {
+        var loc = [x,y,z];
+        var locTx = m4.transformPoint(Tx,loc);
+        context.moveTo(locTx[0]+400,-locTx[1]+300);
+    }
+
+    function lineToTx(x,y,z,Tx) {
+        var loc = [x,y,z];
+        var locTx = m4.transformPoint(Tx,loc);
+        context.lineTo(locTx[0]+400,-locTx[1]+300);
+    }
+
+    function drawAxes(Tx) {
+        moveToTx(0,0,0,Tx);lineToTx(50,0,0,Tx);context.stroke();
+        moveToTx(0,0,0,Tx);lineToTx(0,150,0,Tx);context.stroke();
+        moveToTx(0,0,0,Tx);lineToTx(0,0,250,Tx);context.stroke();
+    }
+
+    function drawHead(Tx) {
+        //front
+        moveToTx(-20 + shiftX, 215 + shiftY, 25 + shiftZ,Tx);lineToTx(20 +shiftX, 215 + shiftY, 25 + shiftZ,Tx);
+        lineToTx(25 +shiftX, 230 + shiftY, 25 + shiftZ,Tx);
+        lineToTx(25 + shiftX,265 + shiftY,25 + shiftZ,Tx);lineToTx(-25 +shiftX, 265 + shiftY, 25 + shiftZ,Tx);
+        lineToTx(-25 + shiftX, 230 + shiftY, 25 + shiftZ,Tx);lineToTx(-20 +shiftX, 215 + shiftY, 25 + shiftZ,Tx);context.stroke();
+        // left
+        moveToTx(-20 + shiftX, 215 + shiftY, -25 + shiftZ,Tx);lineToTx(-25 +shiftX, 230 + shiftY, -25 + shiftZ,Tx);
+        lineToTx(-25 + shiftX, 265 + shiftY, -25 + shiftZ,Tx); lineToTx(-25 +shiftX,265 + shiftY, 25 + shiftZ,Tx);
+        lineToTx(-25 +shiftX,230 + shiftY, 25 + shiftZ,Tx);lineToTx(-20 +shiftX,215 + shiftY, 25 + shiftZ,Tx);
+        lineToTx(-20 +shiftX,215 + shiftY, -25 + shiftZ,Tx);context.stroke();
+        // right
+        moveToTx(20 + shiftX, 215 + shiftY, 25 + shiftZ, Tx);
+        lineToTx(20 + shiftX, 215 + shiftY, -25 + shiftZ,Tx);lineToTx(25 + shiftX, 230 + shiftY, -25 + shiftZ,Tx);
+        lineToTx(25 + shiftX, 265 + shiftY, -25 + shiftZ,Tx);lineToTx(25 +shiftX, 265 + shiftY, 25 + shiftZ,Tx);context.stroke();
+        // back
+        moveToTx(25 + shiftX, 265 + shiftY, -25 + shiftZ,Tx);lineToTx(-25 +shiftX, 265 + shiftY, -25 + shiftZ,Tx);
+        moveToTx(20 + shiftX, 215 + shiftY, -25 + shiftZ,Tx);lineToTx(-20 +shiftX, 215 + shiftY, -25 + shiftZ,Tx);context.stroke();
+    }
+
+    function drawBody(Tx) {
+        //front
+        moveToTx(-50 + shiftX, 200 + shiftY, 25 + shiftZ,Tx);lineToTx(50 + shiftX, 200 + shiftY, 25 + shiftZ,Tx);
+        lineToTx(50 + shiftX,150 + shiftY,25 + shiftZ,Tx);lineToTx(40 + shiftX,100 + shiftY,25 + shiftZ,Tx);
+        lineToTx(50 + shiftX,80 + shiftY,25 + shiftZ,Tx);
+        lineToTx(50 + shiftX,50 + shiftY,25 + shiftZ,Tx);lineToTx(-50 + shiftX, 50 + shiftY, 25 + shiftZ,Tx);
+        lineToTx(-50 + shiftX,80 + shiftY,25 + shiftZ,Tx);lineToTx(-40 + shiftX,100 + shiftY,25 + shiftZ,Tx);
+        lineToTx(-50 + shiftX, 150 + shiftY, 25 + shiftZ,Tx);lineToTx(-50 + shiftX,200 + shiftY,25 + shiftZ,Tx);
+        lineToTx(-50 + shiftX, 200 + shiftY, 25 + shiftZ,Tx);context.stroke();
+        // left
+        lineToTx(-50 + shiftX, 200 + shiftY, -25 + shiftZ,Tx);lineToTx(-50 + shiftX, 150 + shiftY, -25 + shiftZ,Tx);
+        lineToTx(-40 + shiftX, 100 + shiftY, -25 + shiftZ,Tx);lineToTx(-50 + shiftX, 80 + shiftY, -25 + shiftZ,Tx);
+        lineToTx(-50 + shiftX, 50 + shiftY, -25 + shiftZ,Tx); lineToTx(-50 + shiftX,50 + shiftY, 25 + shiftZ,Tx);context.stroke();
+        // right
+        moveToTx(50 + shiftX, 200 + shiftY, 25 + shiftZ, Tx);
+        lineToTx(50 + shiftX, 200 + shiftY, -25 + shiftZ,Tx);lineToTx(50 + shiftX, 150 + shiftY, -25 + shiftZ,Tx);
+        lineToTx(40 + shiftX, 100 + shiftY, -25 + shiftZ,Tx);lineToTx(50 + shiftX, 80 + shiftY, -25 + shiftZ,Tx);
+        lineToTx(50 + shiftX, 50 + shiftY, -25 + shiftZ,Tx);lineToTx(50 + shiftX, 50 + shiftY, 25 + shiftZ,Tx);context.stroke();
+        // back
+        moveToTx(-50 + shiftX, 200 + shiftY, -25 + shiftZ,Tx);lineToTx(50 + shiftX, 200 + shiftY, -25 + shiftZ,Tx);
+        moveToTx(-50 + shiftX, 50 + shiftY, -25 + shiftZ,Tx);lineToTx(50 + shiftX, 50 + shiftY, -25 + shiftZ,Tx);context.stroke();
+        // Block cutoffs
+        // Top
+        moveToTx(-50 + shiftX, 150 + shiftY, 25 + shiftZ,Tx);lineToTx(50 + shiftX, 150 + shiftY, 25 + shiftZ,Tx);
+        lineToTx(50 + shiftX, 150 + shiftY, -25 + shiftZ,Tx);lineToTx(-50 + shiftX, 150 + shiftY, -25 + shiftZ,Tx);
+        lineToTx(-50 + shiftX, 150 + shiftY, 25 + shiftZ,Tx); context.stroke();
+        // Middle
+        moveToTx(-40 + shiftX, 100 + shiftY, 25 + shiftZ,Tx);lineToTx(40 + shiftX, 100 + shiftY, 25 + shiftZ,Tx);
+        lineToTx(40 + shiftX, 100 + shiftY, -25 + shiftZ,Tx);lineToTx(-40 + shiftX, 100 + shiftY, -25 + shiftZ,Tx);
+        lineToTx(-40 + shiftX, 100 + shiftY, 25 + shiftZ,Tx); context.stroke();
+
+        // draw neck
+        Tx = m4.translate(Tx, [0 + shiftX, 215 + shiftY, 0 + shiftZ]);
+        drawCyl( 0, 0, 0, 20, 15,Tx);
+        Tx = stack.shift(); // "restore"
+    }
+    function rightArm(Tx) {
+        //var should_to_elbow_canvas = m4.translation();
+        // Shoulder to elbow size is 100
+        // Shoulder size is 50
+        Tx = m4.translate(Tx, [65 + shiftX, 185 + shiftY, shiftZ]);
+        Tx = m4.axisRotate(Tx, [1,0,0],-raVal);
+        drawCyl(0 , 0, 0, 15, 50, Tx);
+        Tx = m4.translate(Tx, [0, -50, 0]);
+        //stack.unshift(stack[0]); //save
+        drawCyl(0, 0, 0, 15, 50, Tx);
+        Tx = m4.translate(Tx, [0, -50, 0]);
+        Tx = m4.axisRotate(Tx, [1,0,0],R_ForePos);
+        drawCyl(0, 0, 0, 15, 50, Tx);
+        Tx = m4.translate(Tx, [0, -50, 0]);
+        drawHand(0, 0, 0, 15, Tx);
+        Tx = stack.shift(); // "restore"
+    }
+    function leftArm(Tx) {
+        // Shoulder to elbow size is 100
+        // Shoulder size is 50
+        Tx = m4.translate(Tx, [-65 + shiftX, 185 + shiftY, shiftZ]);
+        Tx = m4.axisRotate(Tx, [1,0,0],-laVal);
+        drawCyl(0 , 0, 0, 15, 50, Tx);
+        Tx = m4.translate(Tx, [0, -50, 0]);
+        //stack.unshift(stack[0]); //save
+        drawCyl(0, 0, 0, 15, 50, Tx);
+        Tx = m4.translate(Tx, [0, -50, 0]);
+        Tx = m4.axisRotate(Tx, [1,0,0],L_ForePos);
+        drawCyl(0, 0, 0, 15, 50, Tx);
+        Tx = m4.translate(Tx, [0, -50, 0]);
+        drawHand(0, 0, 0, 15, Tx);
+        Tx = stack.shift(); // "restore"
+    }
+    function rightLeg(Tx){
+        Tx = m4.translate(Tx, [25 + shiftX, 50 + shiftY, shiftZ]);
+        Tx = m4.axisRotate(Tx, [1, 0, 0], -laVal);
+        drawCyl(0, 0, 0, 20, 100, Tx);
+        Tx = m4.translate(Tx, [0, -100, 0]);
+        Tx = m4.axisRotate(Tx, [1, 0, 0], -rightLegPos);
+        drawCyl(0, 0, 0, 20, 75, Tx);
+        Tx = m4.translate(Tx, [0, -75, 0]);
+        Tx = m4.axisRotate(Tx, [1, 0 ,0], RFoot_Tilt);
+        drawFoot(0, 0, 0, 20, Tx);
+        Tx = stack.shift(); // "restore"
+    }
+    function leftLeg(Tx){
+        Tx = m4.translate(Tx, [-25 + shiftX, 50 + shiftY, shiftZ]);
+        Tx = m4.axisRotate(Tx, [1, 0, 0], -raVal);
+        drawCyl(0, 0, 0, 20, 100, Tx);
+        Tx = m4.translate(Tx, [0, -100, 0]);
+        Tx = m4.axisRotate(Tx, [1, 0, 0], -leftLegPos);
+        drawCyl(0, 0, 0, 20, 75, Tx);
+        Tx = m4.translate(Tx, [0, -75, 0]);
+        Tx = m4.axisRotate(Tx, [1, 0 ,0], LFoot_Tilt);
+        drawFoot(0, 0, 0, 20, Tx);
+        Tx = stack.shift(); // "restore"
+    }
+    function drawCyl( xCent, yStart, zCent, rad, length, Tx) {
+        //top
+        moveToTx(xCent + rad*Math.sin(0), yStart, zCent + rad*Math.cos(0), Tx);
+        for(var i = 0; i <= 360; i = i + (360/8)) {
+            lineToTx(xCent + rad*Math.sin(i), yStart,zCent + rad*Math.cos(i), Tx);
+            context.stroke();
+        }
+        // middle
+        for(var i = 0; i <= 360; i = i + (360/8)) {
+            moveToTx(xCent + rad*Math.sin(i), yStart, zCent + rad*Math.cos(i), Tx);
+            lineToTx(xCent + rad*Math.sin(i), yStart - length, zCent + rad*Math.cos(i), Tx);
+            context.stroke();
+        }
+        // bottom
+        moveToTx(xCent + rad*Math.sin(0), yStart - length, zCent + rad*Math.cos(0), Tx);
+        for(var i = 0; i <= 360; i = i + (360/8)) {
+            lineToTx(xCent + rad*Math.sin(i), yStart - length, zCent + rad*Math.cos(i), Tx);
+            context.stroke();
+        }
+    }
+    function drawHand (xCent, yStart, zCent, rad, Tx) {
+        // top
+        moveToTx(xCent + rad*Math.sin(0), yStart, zCent + rad*Math.cos(0), Tx);
+        for(var i = 0; i <= 360; i = i + (360/8)) {
+            lineToTx(xCent + rad*Math.sin(i), yStart,zCent + rad*Math.cos(i), Tx);
+            context.stroke();
+        }
+        // Middle
+        moveToTx(xCent + rad*Math.sin(45), yStart, zCent + rad*Math.cos(45), Tx);
+        lineToTx(xCent + rad*Math.sin(45) + 10, yStart - 15,zCent + rad*Math.cos(45), Tx);
+        moveToTx(xCent + rad*Math.sin(90), yStart, zCent + rad*Math.cos(90), Tx);
+        lineToTx(xCent + rad*Math.sin(90) + 10, yStart - 15,zCent + rad*Math.cos(90), Tx);
+        moveToTx(xCent + rad*Math.sin(135), yStart, zCent + rad*Math.cos(135), Tx);
+        lineToTx(xCent + rad*Math.sin(135), yStart - 15,zCent + rad*Math.cos(135), Tx);
+        moveToTx(xCent + rad*Math.sin(180), yStart, zCent + rad*Math.cos(180), Tx);
+        lineToTx(xCent + rad*Math.sin(180) - 10, yStart - 15,zCent + rad*Math.cos(180), Tx);
+        moveToTx(xCent + rad*Math.sin(225), yStart, zCent + rad*Math.cos(225), Tx);
+        lineToTx(xCent + rad*Math.sin(225) - 10, yStart - 15,zCent + rad*Math.cos(225), Tx);
+        moveToTx(xCent + rad*Math.sin(0), yStart, zCent + rad*Math.cos(0), Tx);
+        lineToTx(xCent + rad*Math.sin(0), yStart - 15,zCent + rad*Math.cos(0), Tx);
+        context.stroke();
+        // Bottom
+        moveToTx(xCent + rad*Math.sin(0), yStart - 15, zCent + rad*Math.cos(0), Tx);
+        lineToTx(xCent + rad*Math.sin(45) + 10, yStart - 15,zCent + rad*Math.cos(45), Tx);
+        lineToTx(xCent + rad*Math.sin(90) + 10, yStart - 15,zCent + rad*Math.cos(90), Tx);
+        lineToTx(xCent + rad*Math.sin(135), yStart - 15,zCent + rad*Math.cos(135), Tx);
+        lineToTx(xCent + rad*Math.sin(180) - 10, yStart - 15,zCent + rad*Math.cos(180), Tx);
+        lineToTx(xCent + rad*Math.sin(225) - 10, yStart - 15,zCent + rad*Math.cos(225), Tx);
+        lineToTx(xCent + rad*Math.sin(0), yStart - 15,zCent + rad*Math.cos(0), Tx);
+        context.stroke();
+
+        //moveToTx(xCent + rad*Math.sin(0), yStart - 25, zCent + rad*Math.cos(0), Tx);
+//        // Digits Bottom
+        for(var i = 0; i <= 360; i = i + (360/8)) {
+            moveToTx(xCent + rad*Math.sin(i), yStart - 25, zCent + rad*Math.cos(i), Tx);
+            lineToTx(xCent + rad*Math.sin(i + 45), yStart - 25,zCent + rad*Math.cos(i + 45), Tx);
+            lineToTx(xCent + 5*Math.sin(i + 45), yStart - 30,zCent + 5*Math.cos(i + 45), Tx);
+            lineToTx(xCent + 5*Math.sin(i + 90), yStart - 30,zCent + 5*Math.cos(i + 90), Tx);
+            context.stroke();
+
+            //alt code
+//            lineToTx(xCent + rad*Math.sin(i), yStart - 25,zCent + rad*Math.cos(i), Tx);
+//            context.stroke();
+        }
+        // Digits Middle
+        moveToTx(xCent + rad*Math.sin(0), yStart - 15, zCent + rad*Math.cos(0), Tx);
+        lineToTx(xCent + rad*Math.sin(0), yStart - 25,zCent + rad*Math.cos(0), Tx);
+        moveToTx(xCent + rad*Math.sin(45) + 10, yStart - 15,zCent + rad*Math.cos(45), Tx);
+        lineToTx(xCent + rad*Math.sin(45), yStart - 25,zCent + rad*Math.cos(45), Tx);
+        moveToTx(xCent + rad*Math.sin(90) + 10, yStart - 15,zCent + rad*Math.cos(90), Tx);
+        lineToTx(xCent + rad*Math.sin(90), yStart - 25,zCent + rad*Math.cos(90), Tx);
+        moveToTx(xCent + rad*Math.sin(135), yStart - 15,zCent + rad*Math.cos(135), Tx);
+        lineToTx(xCent + rad*Math.sin(135), yStart - 25,zCent + rad*Math.cos(135), Tx);
+        moveToTx(xCent + rad*Math.sin(180) - 10, yStart - 15,zCent + rad*Math.cos(180), Tx);
+        lineToTx(xCent + rad*Math.sin(180), yStart - 25,zCent + rad*Math.cos(180), Tx);
+        moveToTx(xCent + rad*Math.sin(225) - 10, yStart - 15,zCent + rad*Math.cos(225), Tx);
+        lineToTx(xCent + rad*Math.sin(225), yStart - 25,zCent + rad*Math.cos(225), Tx);
+    }
+    function drawFoot (xCent, yStart, zCent, rad, Tx) {
+        // top
+        moveToTx(xCent + rad*Math.sin(0), yStart, zCent + rad*Math.cos(0), Tx);
+        for(var i = 0; i <= 360; i = i + (360/8)) {
+            lineToTx(xCent + rad*Math.sin(i), yStart,zCent + rad*Math.cos(i), Tx);
+            context.stroke();
+        }
+        // middle
+        moveToTx(xCent + rad*Math.sin(0), yStart, zCent + rad*Math.cos(0), Tx);
+        lineToTx(xCent+ rad*Math.sin(0), yStart - 25, zCent + rad*Math.cos(0) + 55, Tx);
+        moveToTx(xCent + rad*Math.sin(45), yStart, zCent + rad*Math.cos(45), Tx);
+        lineToTx(xCent+ rad*Math.sin(0), yStart - 25, zCent + rad*Math.cos(0) + 55, Tx);
+        moveToTx(xCent + rad*Math.sin(225), yStart, zCent + rad*Math.cos(225), Tx);
+        lineToTx(xCent+ rad*Math.sin(0), yStart - 25, zCent + rad*Math.cos(0) + 55, Tx);
+        context.stroke();
+        for(var i = (360/8); i <= 250; i = i + (360/8)) {
+            moveToTx(xCent + rad*Math.sin(i), yStart, zCent + rad*Math.cos(i), Tx);
+            lineToTx(xCent + rad*Math.sin(i), yStart - 25,zCent + rad*Math.cos(i), Tx);
+            context.stroke();
+        }
+        // Bottom
+        moveToTx(xCent + rad*Math.sin(265), yStart - 25, zCent + rad*Math.cos(265), Tx);
+        for(var i = (265); i <= 450; i = i + (360/8)) {
+            lineToTx(xCent + rad*Math.sin(i), yStart - 25,zCent + rad*Math.cos(i), Tx);
+            context.stroke();
+        }
+        moveToTx(xCent + rad*Math.sin(265), yStart - 25, zCent + rad*Math.cos(265), Tx);
+        lineToTx(xCent + rad*Math.sin(0), yStart - 25,zCent + rad*Math.cos(0) + 55, Tx);
+        context.stroke();
+        moveToTx(xCent + rad*Math.sin(445), yStart - 25, zCent + rad*Math.cos(445), Tx);
+        lineToTx(xCent + rad*Math.sin(0), yStart - 25,zCent + rad*Math.cos(0) + 55, Tx);
+        context.stroke();
+    }
+    setInterval(function() {
+        pace = slider4.value;
+        if (pace == 0) {
+            feetSmooth = .13;
+            if(RA_Movback == 0){
+                RFoot_Inc = -.08;
+                rightLegSmooth = -.08;
+            }else{
+                RFoot_Inc = .08;
+                rightLegSmooth = .08;
+            }
+            if(LA_Movback == 1){
+                LFoot_Inc = -.08;
+                leftLegSmooth = -.08;
+            }else{
+                LFoot_Inc = .08;
+                leftLegSmooth = .08;
+            }
+            // hack to clear the canvas fast
+            canvas.width = canvas.width;
+            raVal = raVal + raInc;
+            laVal = laVal + laInc;
+            if (raVal > 7.5 || raVal < 5.8) {
+                if(raVal < 5.8){
+                    // Correct swing dir
+                    raInc = (-1)*Math.abs(raInc);
+                    RA_Movback = 1;
+                    RF_Inc = Math.abs(RF_Inc);
+                    RFoot_Inc = Math.abs(RFoot_Inc);
+                    revolveBody_Inc = Math.abs(revolveBody_Inc);
+                    rightLegSmooth = Math.abs(rightLegSmooth);
+                    laVal = 7.5;
+                    R_ForePos = -6.199;
+                }
+                if(raVal > 7.5){
+                    // Correct swing dir
+                    raInc = Math.abs(raInc);
+                    RA_Movback = 0;
+                    RF_Inc = (-1)*Math.abs(RF_Inc);
+                    RFoot_Inc = (-1)*Math.abs(RFoot_Inc);
+                    revolveBody_Inc = (-1)*Math.abs(revolveBody_Inc);
+                    rightLegSmooth = (-1)*Math.abs(rightLegSmooth);
+                    laVal = 5.8;
+                    R_ForePos = -7.4;
+                }
+                raInc = (-1) * raInc;
+                RA_Movback = (RA_Movback + 1) % 2;
+                RF_Inc = (-1) * RF_Inc;
+                RFoot_Inc = (-1) * RFoot_Inc;
+                revolveBody_Inc = (-1) * revolveBody_Inc;
+                rightLegSmooth = (-1) * rightLegSmooth;
+            }
+            if (laVal > 7.5 || laVal < 5.8) {
+                if(laVal < 5.8){
+                    laInc = (-1)*Math.abs(laInc);
+                    LA_Movback = 0;
+                    LF_Inc = Math.abs(LF_Inc);
+                    LFoot_Inc = Math.abs(LFoot_Inc);
+                    leftLegSmooth = Math.abs(leftLegSmooth);
+                    raVal = 7.5;
+                    L_ForePos = -6.27999;
+                }
+                if(laVal > 7.5){
+                    laInc = Math.abs(laInc);
+                    LA_Movback = 1;
+                    LF_Inc = (-1)*Math.abs(LF_Inc);
+                    LFoot_Inc = (-1)*Math.abs(LFoot_Inc);
+                    leftLegSmooth = (-1)*Math.abs(leftLegSmooth);
+                    raVal = 5.8;
+                    L_ForePos = -7.4;
+                }
+                laInc = (-1) * laInc;
+                LA_Movback = (LA_Movback + 1) % 2;
+                LF_Inc = (-1) * LF_Inc;
+                LFoot_Inc = (-1) * LFoot_Inc;
+                leftLegSmooth = (-1) * leftLegSmooth;
+            }
+
+            // Move Forearms and lower legs
+            if (raVal < 6.5) {
+                R_ForePos = R_ForePos + RF_Inc;
+                rightLegPos = rightLegPos + rightLegSmooth;
+            }
+            if (raVal > 6.5) {
+                R_ForePos = -7.4;
+                rightLegPos = -7.4;
+            }
+            if (laVal < 6.5) {
+                L_ForePos = L_ForePos + LF_Inc;
+                leftLegPos = leftLegPos + leftLegSmooth;
+            }
+            if (laVal > 6.5) {
+                L_ForePos = -7.4;
+                leftLegPos = -7.4;
+            }
+
+            // Move feet
+            if (raVal > 6.2 && raVal < 7.15 && RA_Movback == 0) {
+                RFoot_Tilt = RFoot_Tilt + RFoot_Inc;
+            }
+            // Smooth out right foot movement
+            if (raVal > 7.15) {
+                RFoot_Tilt = RFoot_Tilt + feetSmooth;
+            }
+            if (raVal < 6.2) {
+                RFoot_Tilt = 0;
+            }
+            if (laVal > 6.2 && laVal < 7.15 && LA_Movback == 1) {
+                LFoot_Tilt = LFoot_Tilt + LFoot_Inc;
+            }
+            // Smooth out left foot movement
+            if (laVal > 7.15) {
+                LFoot_Tilt = LFoot_Tilt + feetSmooth;
+            }
+            if (laVal < 6.2) {
+                LFoot_Tilt = 0;
+            }
+
+            // revolve body movement
+            revolveBody = revolveBody + revolveBody_Inc;
+
+            var angle1 = slider1.value * 0.01 * Math.PI;
+            // var angle2 = slider2.value*0.01*Math.PI;
+            var axis = [1, 1, 1];
+
+            var Tmodel = m4.axisRotation(axis, 0);
+
+            walkInc = .05;
+            walkAround = walkAround - walkInc;
+
+            var eye = [500 * Math.cos(angle1), slider2.value, 500 * Math.sin(angle1)];
+            var target = [0, 0, 0];
+            var up = [0, 1, 0];
+            var Tcamera = m4.inverse(m4.lookAt(eye, target, up));
+
+            var Tmodelview = m4.multiply(Tmodel, Tcamera);
+
+            stack.unshift(Tmodelview);
+            var Tmodelview1 = m4.axisRotate(Tmodelview, [0, 1, 0], walkAround);//Walk body in circles
+            var Tmodelview1 = m4.translate(Tmodelview1, [250, 0, 0]);//radius of walk
+            var Tmodelview1 = m4.axisRotate(Tmodelview1, [0, 1, 0], revolveBody);//revolve body back and forth
+            var Tmodelview1 = m4.axisRotate(Tmodelview1, [1, 0, 0], .2);// tilt body slightly forward
+            drawHead(Tmodelview1);
+            drawBody(Tmodelview1);
+            rightArm(Tmodelview1);
+            leftArm(Tmodelview1);
+            //Tmodelview = stack.shift(); // "restore"
+            //stack.unshift(Tmodelview);
+            var Tmodelview = m4.axisRotate(Tmodelview, [0, 1, 0], walkAround);//walk legs in circles
+            var Tmodelview = m4.translate(Tmodelview, [250, 0, 5]);// radius of walk
+
+            rightLeg(Tmodelview);
+            leftLeg(Tmodelview);
+            //drawAxes(Tcamera);
+        } else if( pace == 1){
+            feetSmooth = .10;
+            if(RA_Movback == 0){
+                RFoot_Inc = -.06;
+                rightLegSmooth = -.06;
+            }else{
+                RFoot_Inc = .06;
+                rightLegSmooth = .06;
+            }
+            if(LA_Movback == 1){
+                LFoot_Inc = -.06;
+                leftLegSmooth = -.06;
+            }else{
+                LFoot_Inc = .06;
+                leftLegSmooth = .06;
+            }
+
+            // hack to clear the canvas fast
+            canvas.width = canvas.width;
+            raVal = raVal + raInc;
+            laVal = laVal + laInc;
+            if(raVal > 7.3 || raVal < 6){
+                if(raVal < 6){
+                    // Correct swing dir
+                    raInc = (-1)*Math.abs(raInc);
+                    RA_Movback = 1;
+                    RF_Inc = Math.abs(RF_Inc);
+                    RFoot_Inc = Math.abs(RFoot_Inc);
+                    revolveBody_Inc = Math.abs(revolveBody_Inc);
+                    rightLegSmooth = Math.abs(rightLegSmooth);
+                    laVal = 7.3;
+                    R_ForePos = -6.199;
+                }
+                if(raVal > 7.3){
+                    // Correct swing dir
+                    raInc = Math.abs(raInc);
+                    RA_Movback = 0;
+                    RF_Inc = (-1)*Math.abs(RF_Inc);
+                    RFoot_Inc = (-1)*Math.abs(RFoot_Inc);
+                    revolveBody_Inc = (-1)*Math.abs(revolveBody_Inc);
+                    rightLegSmooth = (-1)*Math.abs(rightLegSmooth);
+                    laVal = 6;
+                    R_ForePos = -7.4;
+                }
+                raInc = (-1)*raInc;
+                RA_Movback = (RA_Movback + 1) % 2;
+                RF_Inc = (-1)*RF_Inc;
+                RFoot_Inc = (-1)*RFoot_Inc;
+                revolveBody_Inc = (-1)*revolveBody_Inc;
+                rightLegSmooth = (-1)*rightLegSmooth;
+
+            }
+            if(laVal > 7.3 || laVal < 6){
+                if(laVal < 6){
+                    laInc = (-1)*Math.abs(laInc);
+                    LA_Movback = 0;
+                    LF_Inc = Math.abs(LF_Inc);
+                    LFoot_Inc = Math.abs(LFoot_Inc);
+                    leftLegSmooth = Math.abs(leftLegSmooth);
+                    raVal = 7.3;
+                    L_ForePos = -6.27999;
+                }
+                if(laVal > 7.3){
+                    laInc = Math.abs(laInc);
+                    LA_Movback = 1;
+                    LF_Inc = (-1)*Math.abs(LF_Inc);
+                    LFoot_Inc = (-1)*Math.abs(LFoot_Inc);
+                    leftLegSmooth = (-1)*Math.abs(leftLegSmooth);
+                    raVal = 6;
+                    L_ForePos = -7.4;
+                }
+                laInc = (-1)*laInc;
+                LA_Movback = (LA_Movback + 1) % 2;
+                LF_Inc = (-1)*LF_Inc;
+                LFoot_Inc = (-1)*LFoot_Inc;
+                leftLegSmooth = (-1)*leftLegSmooth;
+            }
+
+            //  Move Forearms and lower legs
+            if( raVal < 6.5){
+                R_ForePos = R_ForePos + RF_Inc;
+                rightLegPos = rightLegPos + rightLegSmooth;
+            }
+            if( raVal > 6.5) {
+                R_ForePos = -7.2;
+                rightLegPos = -7.2;
+            }
+            if( laVal < 6.5){
+                L_ForePos = L_ForePos + LF_Inc;
+                leftLegPos = leftLegPos + leftLegSmooth;
+            }
+            if( laVal > 6.5) {
+                L_ForePos = -7.2;
+                leftLegPos = -7.2;
+            }
+
+
+            // Move feet
+            if( raVal > 6.4 && raVal < 7 && RA_Movback == 0){
+                RFoot_Tilt = RFoot_Tilt + RFoot_Inc;
+            }
+            // Smooth out right foot movement
+            if(raVal > 7){
+                RFoot_Tilt = RFoot_Tilt + feetSmooth;
+            }
+            if( raVal < 6.4) {
+                RFoot_Tilt = 0;
+            }
+            if( laVal > 6.4 && laVal < 7 && LA_Movback == 1){
+                LFoot_Tilt = LFoot_Tilt + LFoot_Inc;
+            }
+            // Smooth out left foot movement
+            if(laVal > 7){
+                LFoot_Tilt = LFoot_Tilt + feetSmooth;
+            }
+            if( laVal < 6.4) {
+                LFoot_Tilt = 0;
+            }
+
+            // revolve body movement
+            revolveBody = revolveBody + revolveBody_Inc;
+
+            var angle1 = slider1.value*0.01*Math.PI;
+            // var angle2 = slider2.value*0.01*Math.PI;
+            var axis = [1,1,1];
+
+            var Tmodel=m4.axisRotation(axis,0);
+
+            walkInc = .04;
+            walkAround = walkAround - walkInc;
+
+            var eye=[500*Math.cos(angle1),slider2.value,500*Math.sin(angle1)];
+            var target=[0,0,0];
+            var up=[0,1,0];
+            var Tcamera = m4.inverse(m4.lookAt(eye,target,up));
+
+            var Tmodelview = m4.multiply(Tmodel,Tcamera);
+
+            stack.unshift(Tmodelview);
+            var Tmodelview1 = m4.axisRotate(Tmodelview,[0,1,0], walkAround);//Walk body in circles
+            var Tmodelview1 = m4.translate(Tmodelview1,[250,0,0]);//radius of walk
+            var Tmodelview1 = m4.axisRotate(Tmodelview1,[0,1,0], revolveBody);//revolve body back and forth
+            var Tmodelview1 = m4.axisRotate(Tmodelview1, [1,0,0],.15);// tilt body slightly forward
+            drawHead(Tmodelview1);
+            drawBody(Tmodelview1);
+            rightArm(Tmodelview1);
+            leftArm(Tmodelview1);
+            //Tmodelview = stack.shift(); // "restore"
+            //stack.unshift(Tmodelview);
+            var Tmodelview = m4.axisRotate(Tmodelview, [0, 1, 0], walkAround);//walk legs in circles
+            var Tmodelview = m4.translate(Tmodelview,[250,0,5]);// radius of walk
+
+            rightLeg(Tmodelview);
+            leftLeg(Tmodelview);
+            //drawAxes(Tcamera);
+        }
+        else if(pace == 2){
+            feetSmooth = .07;
+            if(RA_Movback == 0){
+                RFoot_Inc = -.04;
+                rightLegSmooth = -.04;
+            }else{
+                RFoot_Inc = .04;
+                rightLegSmooth = .04;
+            }
+            if(LA_Movback == 1){
+                LFoot_Inc = -.04;
+                leftLegSmooth = -.04;
+            }else{
+                LFoot_Inc = .04;
+                leftLegSmooth = .04;
+            }
+
+            // hack to clear the canvas fast
+            canvas.width = canvas.width;
+            raVal = raVal + raInc;
+            laVal = laVal + laInc;
+            if(raVal > 7.1 || raVal < 6.2){
+                if(raVal < 6.2){
+                    // Correct swing dir
+                    raInc = (-1)*Math.abs(raInc);
+                    RA_Movback = 1;
+                    RF_Inc = Math.abs(RF_Inc);
+                    RFoot_Inc = Math.abs(RFoot_Inc);
+                    revolveBody_Inc = Math.abs(revolveBody_Inc);
+                    rightLegSmooth = Math.abs(rightLegSmooth);
+                    laVal = 7.1;
+                    R_ForePos = -6.199;
+                }
+                if(raVal > 7.1){
+                    // Correct swing dir
+                    raInc = Math.abs(raInc);
+                    RA_Movback = 0;
+                    RF_Inc = (-1)*Math.abs(RF_Inc);
+                    RFoot_Inc = (-1)*Math.abs(RFoot_Inc);
+                    revolveBody_Inc = (-1)*Math.abs(revolveBody_Inc);
+                    rightLegSmooth = (-1)*Math.abs(rightLegSmooth);
+                    laVal = 6.2;
+                    R_ForePos = -7.4;
+                }
+                raInc = (-1)*raInc;
+                RA_Movback = (RA_Movback + 1) % 2;
+                RF_Inc = (-1)*RF_Inc;
+                RFoot_Inc = (-1)*RFoot_Inc;
+                revolveBody_Inc = (-1)*revolveBody_Inc;
+                rightLegSmooth = (-1)*rightLegSmooth;
+
+            }
+            if(laVal > 7.1 || laVal < 6.2){
+                if(laVal < 6.2){
+                    laInc = (-1)*Math.abs(laInc);
+                    LA_Movback = 0;
+                    LF_Inc = Math.abs(LF_Inc);
+                    LFoot_Inc = Math.abs(LFoot_Inc);
+                    leftLegSmooth = Math.abs(leftLegSmooth);
+                    raVal = 7.1;
+                    L_ForePos = -6.27999;
+                }
+                if(laVal > 7.1){
+                    laInc = Math.abs(laInc);
+                    LA_Movback = 1;
+                    LF_Inc = (-1)*Math.abs(LF_Inc);
+                    LFoot_Inc = (-1)*Math.abs(LFoot_Inc);
+                    leftLegSmooth = (-1)*Math.abs(leftLegSmooth);
+                    raVal = 6.2;
+                    L_ForePos = -7.4;
+                }
+                laInc = (-1)*laInc;
+                LA_Movback = (LA_Movback + 1) % 2;
+                LF_Inc = (-1)*LF_Inc;
+                LFoot_Inc = (-1)*LFoot_Inc;
+                leftLegSmooth = (-1)*leftLegSmooth;
+            }
+
+            //  Move Forearms and lower legs
+            if( raVal < 6.5){
+                R_ForePos = R_ForePos + RF_Inc;
+                rightLegPos = rightLegPos + rightLegSmooth;
+            }
+            if( raVal > 6.5) {
+                R_ForePos = -7;
+                rightLegPos = -7;
+            }
+            if( laVal < 6.5){
+                L_ForePos = L_ForePos + LF_Inc;
+                leftLegPos = leftLegPos + leftLegSmooth;
+            }
+            if( laVal > 6.5) {
+                L_ForePos = -7;
+                leftLegPos = -7;
+            }
+
+
+            // Move feet
+            if( raVal > 6.6 && raVal < 6.8 && RA_Movback == 0){
+                RFoot_Tilt = RFoot_Tilt + RFoot_Inc;
+            }
+            // Smooth out right foot movement
+            if(raVal > 6.8){
+                RFoot_Tilt = RFoot_Tilt + feetSmooth;
+            }
+            if( raVal < 6.6) {
+                RFoot_Tilt = 0;
+            }
+            if( laVal > 6.6 && laVal < 6.8 && LA_Movback == 1){
+                LFoot_Tilt = LFoot_Tilt + LFoot_Inc;
+            }
+            // Smooth out left foot movement
+            if(laVal > 6.8){
+                LFoot_Tilt = LFoot_Tilt + feetSmooth;
+            }
+            if( laVal < 6.6) {
+                LFoot_Tilt = 0;
+            }
+
+            // revolve body movement
+            revolveBody = revolveBody + revolveBody_Inc;
+
+            var angle1 = slider1.value*0.01*Math.PI;
+            // var angle2 = slider2.value*0.01*Math.PI;
+            var axis = [1,1,1];
+
+            var Tmodel=m4.axisRotation(axis,0);
+
+            walkInc = .03;
+            walkAround = walkAround - walkInc;
+
+            var eye=[500*Math.cos(angle1),slider2.value,500*Math.sin(angle1)];
+            var target=[0,0,0];
+            var up=[0,1,0];
+            var Tcamera = m4.inverse(m4.lookAt(eye,target,up));
+
+            var Tmodelview = m4.multiply(Tmodel,Tcamera);
+
+            stack.unshift(Tmodelview);
+            var Tmodelview1 = m4.axisRotate(Tmodelview,[0,1,0], walkAround);//Walk body in circles
+            var Tmodelview1 = m4.translate(Tmodelview1,[250,0,0]);//radius of walk
+            var Tmodelview1 = m4.axisRotate(Tmodelview1,[0,1,0], revolveBody);//revolve body back and forth
+            var Tmodelview1 = m4.axisRotate(Tmodelview1, [1,0,0],.1);// tilt body slightly forward
+            drawHead(Tmodelview1);
+            drawBody(Tmodelview1);
+            rightArm(Tmodelview1);
+            leftArm(Tmodelview1);
+            //Tmodelview = stack.shift(); // "restore"
+            //stack.unshift(Tmodelview);
+            var Tmodelview = m4.axisRotate(Tmodelview, [0, 1, 0], walkAround);//walk legs in circles
+            var Tmodelview = m4.translate(Tmodelview,[250,0,5]);// radius of walk
+
+            rightLeg(Tmodelview);
+            leftLeg(Tmodelview);
+            //drawAxes(Tcamera);
+        }
+        else if(pace == 3){
+            feetSmooth = .04;
+            if(RA_Movback == 0){
+                RFoot_Inc = -.02;
+                rightLegSmooth = -.02;
+            }else{
+                RFoot_Inc = .02;
+                rightLegSmooth = .02;
+            }
+            if(LA_Movback == 1){
+                LFoot_Inc = -.02;
+                leftLegSmooth = -.02;
+            }else{
+                LFoot_Inc = .02;
+                leftLegSmooth = .02;
+            }
+
+            // hack to clear the canvas fast
+            canvas.width = canvas.width;
+            raVal = raVal + raInc;
+            laVal = laVal + laInc;
+            if(raVal > 6.9 || raVal < 6.4){
+                if(raVal < 6.4){
+                    // Correct swing dir
+                    raInc = (-1)*Math.abs(raInc);
+                    RA_Movback = 1;
+                    RF_Inc = Math.abs(RF_Inc);
+                    RFoot_Inc = Math.abs(RFoot_Inc);
+                    revolveBody_Inc = Math.abs(revolveBody_Inc);
+                    rightLegSmooth = Math.abs(rightLegSmooth);
+                    laVal = 6.9;
+                    R_ForePos = -6.199;
+                }
+                if(raVal > 6.9){
+                    // Correct swing dir
+                    raInc = Math.abs(raInc);
+                    RA_Movback = 0;
+                    RF_Inc = (-1)*Math.abs(RF_Inc);
+                    RFoot_Inc = (-1)*Math.abs(RFoot_Inc);
+                    revolveBody_Inc = (-1)*Math.abs(revolveBody_Inc);
+                    rightLegSmooth = (-1)*Math.abs(rightLegSmooth);
+                    laVal = 6.4;
+                    R_ForePos = -7.4;
+                }
+                raInc = (-1)*raInc;
+                RA_Movback = (RA_Movback + 1) % 2;
+                RF_Inc = (-1)*RF_Inc;
+                RFoot_Inc = (-1)*RFoot_Inc;
+                revolveBody_Inc = (-1)*revolveBody_Inc;
+                rightLegSmooth = (-1)*rightLegSmooth;
+
+            }
+            if(laVal > 6.9 || laVal < 6.4){
+                if(laVal < 6.4){
+                    laInc = (-1)*Math.abs(laInc);
+                    LA_Movback = 0;
+                    LF_Inc = Math.abs(LF_Inc);
+                    LFoot_Inc = Math.abs(LFoot_Inc);
+                    leftLegSmooth = Math.abs(leftLegSmooth);
+                    raVal = 6.9;
+                    L_ForePos = -6.27999;
+                }
+                if(laVal > 6.9){
+                    laInc = Math.abs(laInc);
+                    LA_Movback = 1;
+                    LF_Inc = (-1)*Math.abs(LF_Inc);
+                    LFoot_Inc = (-1)*Math.abs(LFoot_Inc);
+                    leftLegSmooth = (-1)*Math.abs(leftLegSmooth);
+                    raVal = 6.4;
+                    L_ForePos = -7.4;
+                }
+                laInc = (-1)*laInc;
+                LA_Movback = (LA_Movback + 1) % 2;
+                LF_Inc = (-1)*LF_Inc;
+                LFoot_Inc = (-1)*LFoot_Inc;
+                leftLegSmooth = (-1)*leftLegSmooth;
+            }
+
+            //  Move Forearms and lower legs
+            if( raVal < 6.5){
+                R_ForePos = R_ForePos + RF_Inc;
+                rightLegPos = rightLegPos + rightLegSmooth;
+            }
+            if( raVal > 6.5) {
+                R_ForePos = -6.8;
+                rightLegPos = -6.8;
+            }
+            if( laVal < 6.5){
+                L_ForePos = L_ForePos + LF_Inc;
+                leftLegPos = leftLegPos + leftLegSmooth;
+            }
+            if( laVal > 6.5) {
+                L_ForePos = -6.8;
+                leftLegPos = -6.8;
+            }
+
+
+            // Move feet
+            if( raVal > 6.5 && raVal < 6.6 && RA_Movback == 0){
+                RFoot_Tilt = RFoot_Tilt + RFoot_Inc;
+            }
+            // Smooth out right foot movement
+            if(raVal > 6.6){
+                RFoot_Tilt = RFoot_Tilt + feetSmooth;
+            }
+            if( raVal < 6.5) {
+                RFoot_Tilt = 0;
+            }
+            if( laVal > 6.5 && laVal < 6.6 && LA_Movback == 1){
+                LFoot_Tilt = LFoot_Tilt + LFoot_Inc;
+            }
+            // Smooth out left foot movement
+            if(laVal > 6.6){
+                LFoot_Tilt = LFoot_Tilt + feetSmooth;
+            }
+            if( laVal < 6.5) {
+                LFoot_Tilt = 0;
+            }
+
+            // revolve body movement
+            revolveBody = revolveBody + revolveBody_Inc;
+
+            var angle1 = slider1.value*0.01*Math.PI;
+            var axis = [1,1,1];
+
+            var Tmodel=m4.axisRotation(axis,0);
+
+            walkInc = .01;
+            walkAround = walkAround - walkInc;
+
+            var eye=[500*Math.cos(angle1),slider2.value,500*Math.sin(angle1)];
+            var target=[0,0,0];
+            var up=[0,1,0];
+            var Tcamera = m4.inverse(m4.lookAt(eye,target,up));
+
+            var Tmodelview = m4.multiply(Tmodel,Tcamera);
+
+            stack.unshift(Tmodelview);
+            var Tmodelview1 = m4.axisRotate(Tmodelview,[0,1,0], walkAround);//Walk body in circles
+            var Tmodelview1 = m4.translate(Tmodelview1,[250,0,0]);//radius of walk
+            var Tmodelview1 = m4.axisRotate(Tmodelview1,[0,1,0], revolveBody);//revolve body back and forth
+            var Tmodelview1 = m4.axisRotate(Tmodelview1, [1,0,0],.05);// tilt body slightly forward
+            drawHead(Tmodelview1);
+            drawBody(Tmodelview1);
+            rightArm(Tmodelview1);
+            leftArm(Tmodelview1);
+            //Tmodelview = stack.shift(); // "restore"
+            //stack.unshift(Tmodelview);
+            var Tmodelview = m4.axisRotate(Tmodelview, [0, 1, 0], walkAround);//walk legs in circles
+            var Tmodelview = m4.translate(Tmodelview,[250,0,0]);// radius of walk
+
+            rightLeg(Tmodelview);
+            leftLeg(Tmodelview);
+            //drawAxes(Tcamera);
+        }
+        else if(pace == 4){
+            if(RA_Movback == 0){
+                RFoot_Inc = 0;
+                rightLegSmooth = 0;
+            }else{
+                RFoot_Inc = 0;
+                rightLegSmooth = 0;
+            }
+            if(LA_Movback == 1){
+                LFoot_Inc = 0;
+                leftLegSmooth = 0;
+            }else{
+                LFoot_Inc = 0;
+                leftLegSmooth = 0;
+            }
+
+            // hack to clear the canvas fast
+            canvas.width = canvas.width;
+
+            var angle1 = slider1.value*0.01*Math.PI;
+            // var angle2 = slider2.value*0.01*Math.PI;
+            var axis = [1,1,1];
+
+            var Tmodel=m4.axisRotation(axis,0);
+
+            walkInc = 0;
+            walkAround = walkAround - walkInc;
+
+            var eye=[500*Math.cos(angle1),slider2.value,500*Math.sin(angle1)];
+            var target=[0,0,0];
+            var up=[0,1,0];
+            var Tcamera = m4.inverse(m4.lookAt(eye,target,up));
+
+            var Tmodelview = m4.multiply(Tmodel,Tcamera);
+
+            stack.unshift(Tmodelview);
+            var Tmodelview1 = m4.axisRotate(Tmodelview,[0,1,0], walkAround);//Walk body in circles
+            var Tmodelview1 = m4.translate(Tmodelview1,[250,0,0]);//radius of walk
+            var Tmodelview1 = m4.axisRotate(Tmodelview1,[0,1,0], revolveBody);//revolve body back and forth
+            //var Tmodelview1 = m4.axisRotate(Tmodelview1, [1,0,0],.1);// tilt body slightly forward
+            drawHead(Tmodelview1);
+            drawBody(Tmodelview1);
+            rightArm(Tmodelview1);
+            leftArm(Tmodelview1);
+            //Tmodelview = stack.shift(); // "restore"
+            //stack.unshift(Tmodelview);
+            var Tmodelview = m4.axisRotate(Tmodelview, [0, 1, 0], walkAround);//walk legs in circles
+            var Tmodelview = m4.translate(Tmodelview,[250,0,0]);// radius of walk
+
+            rightLeg(Tmodelview);
+            leftLeg(Tmodelview);
+            //drawAxes(Tcamera);
+        }
+    },30);
+</script>
+</body>
+</html>
